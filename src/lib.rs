@@ -114,13 +114,8 @@ macro_rules! hit {
     ($ident:ident) => {{
         #[cfg(test)]
         {
-            extern "C" {
-                #[no_mangle]
-                static $ident: $crate::__rt::HitCounter;
-            }
-            unsafe {
-                $ident.hit();
-            }
+            $crate::__cov_mark_private_create_mark! { static $ident }
+            $ident.hit();
         }
     }};
 }
@@ -146,8 +141,15 @@ macro_rules! hit {
 #[macro_export]
 macro_rules! check {
     ($ident:ident) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
-        let _guard = $crate::__rt::Guard::new(&$ident, None);
+        #[cfg(test)]
+        let _guard = {
+            extern "C" {
+                static $ident: $crate::__rt::HitCounter;
+            }
+            unsafe {
+                $crate::__rt::Guard::new(&$ident, None)
+            }
+        };
     };
 }
 
@@ -175,8 +177,15 @@ macro_rules! check {
 #[macro_export]
 macro_rules! check_count {
     ($ident:ident, $count: literal) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
-        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
+        #[cfg(test)]
+        let _guard = {
+            extern "C" {
+                static $ident: $crate::__rt::HitCounter;
+            }
+            unsafe {
+                $crate::__rt::Guard::new(&$ident, Some($count))
+            }
+        };
     };
 }
 

@@ -12,6 +12,12 @@ fn test_safe_divide_by_zero() {
     assert_eq!(safe_divide(92, 0), 0);
 }
 
+#[test]
+fn test_duplicate_checks() {
+    cov_mark::check!(save_divide_zero);
+    assert_eq!(safe_divide(92, 0), 0);
+}
+
 struct CoveredDropper;
 impl Drop for CoveredDropper {
     fn drop(&mut self) {
