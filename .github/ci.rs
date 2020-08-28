@@ -29,6 +29,14 @@ fn try_main() -> Result<()> {
         shell("cargo test --all-features")?;
     }
 
+    {
+        let _s = Section::new("DOCS");
+        shell("rustup toolchain add nightly")?;
+        std::env::set_var("RUSTDOCFLAGS", "--cfg nightly_docs");
+        shell("cargo +nightly doc")?;
+        std::env::remove_var("RUSTDOCFLAGS");
+    }
+
     let current_branch = shell_output("git branch --show-current")?;
     if &current_branch == "master" {
         let _s = Section::new("PUBLISH");
