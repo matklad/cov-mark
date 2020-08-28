@@ -96,6 +96,71 @@
 #![cfg_attr(nightly_docs, deny(broken_intra_doc_links))]
 #![cfg_attr(nightly_docs, feature(doc_cfg))]
 
+/// Defines a mark to be used with [`hit!`] and [`chk!`].
+///
+/// # Example
+///
+/// ```
+/// #[cfg(test)]
+/// mod tests {
+///    cov_mark::def!(no_op);
+/// }
+/// ```
+#[macro_export]
+macro_rules! def {
+    ($ident:ident) => {
+        $crate::__cov_mark_private_create_mark! { static $ident }
+    };
+}
+
+/// Equivalent of [`check!`], but uses a symbol defined with [`def!`] instead
+/// of implicitly declaring one.
+///
+/// # Example
+///
+/// ```
+/// cov_mark::def!(event);
+/// #[test]
+/// fn test() {
+///     cov_mark::chk!(event);
+///     do_stuff();
+/// }
+/// # fn do_stuff() {
+/// #     cov_mark::hit!(event);
+/// # }
+/// ```
+#[macro_export]
+macro_rules! chk {
+    ($ident:ident) => {
+        let _guard = $crate::__rt::Guard::new(&$ident, None);
+    };
+}
+
+/// Equivalent of [`check_count!`], but uses a symbol defined with [`def!`] instead
+/// of implicitly declaring one.
+///
+/// # Example
+///
+/// ```
+/// cov_mark::def!(event);
+/// #[test]
+/// fn test() {
+///     cov_mark::chk_cnt!(event, 1);
+///     do_stuff();
+/// }
+/// # fn do_stuff() {
+/// #     cov_mark::hit!(event);
+/// # }
+/// ```
+#[cfg(feature = "thread-local")]
+#[cfg_attr(nightly_docs, doc(cfg(feature = "thread-local")))]
+#[macro_export]
+macro_rules! chk_cnt {
+    ($ident:ident, $count: literal) => {
+        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
+    };
+}
+
 /// Hit a mark with a specified name.
 ///
 /// # Example
