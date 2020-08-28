@@ -1,7 +1,10 @@
 [package]
 name = "cov-mark"
-version = "1.0.0"
-authors = ["Aleksey Kladov <aleksey.kladov@gmail.com>"]
+version = "1.1.0"
+authors = [
+    "Aleksey Kladov <aleksey.kladov@gmail.com>",
+    "Simonas Kazlauskas <cov-mark@kazlauskas.me>"
+]
 license = "MIT OR Apache-2.0"
 edition = "2018"
 description = "Manual coverage marks."
