@@ -10,3 +10,12 @@ documentation = "https://docs.rs/cov-mark"
 
 keywords = ["coverage", "test"]
 categories = ["development-tools"]
+
+[features]
+# Thread-local support enables more precise hit marks (no more false positives) and also allows for
+# an exact number of hits to be checked for (the `check_exact!` macro).
+thread-local = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "nightly_docs"]
