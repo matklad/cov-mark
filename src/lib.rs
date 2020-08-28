@@ -1,6 +1,6 @@
 //! # cov-mark
 //!
-//! This library provides two macros, `cov_mark::hit!` and `cov_mark::check!`,
+//! This library at its core provides two macros, [`hit!`] and [`check!`],
 //! which can be used to verify that a certain test exercises a certain code
 //! path.
 //!
@@ -60,24 +60,27 @@
 //!
 //! # Limitations
 //!
-//! * In the presence of threads, `cov_mark::check!` may falsely pass, if the
-//!   mark is hit by an unrelated thread.
+//! * In the presence of threads, [`check!`] may falsely pass, if the
+//!   mark is hit by an unrelated thread, unless the `thread-local` feature is
+//!   enabled.
 //! * Names of marks must be globally unique.
-//! * `cov_mark::check!` can't be used in integration tests.
+//! * [`check!`] can't be used in integration tests.
 //!
 //! # Implementation Details
 //!
-//! Each coverage mark is an `AtomicUsize` counter. `cov_mark::hit!` increments
-//! this counter, `cov_mark::check!` returns a guard object which checks that
-//! the mark was incremented.
+//! Each coverage mark is an `AtomicUsize` counter. [`hit!`] increments
+//! this counter, [`check!`] returns a guard object which checks that
+//! the mark was incremented. When the `thread-local` feature is enabled,
+//! each counter is stored as a thread-local, allowing for more accurate
+//! counting.
 //!
-//! Counters are declared using `#[no_mangle]` attribute, so that `hit!` and
-//! `cover!` both can find the mark without the need to declare it in a common
+//! Counters are declared using `#[no_mangle]` attribute, so that [`hit!`] and
+//! [`check!`] both can find the mark without the need to declare it in a common
 //! module. Aren't the linkers ~~horrible~~ wonderful?
 //!
 //! # Safety
 //!
-//! Technically, the `hit!` macro in this crate is unsound: it uses `extern "C"
+//! Technically, the [`hit!`] macro in this crate is unsound: it uses `extern "C"
 //! #[no_mangle]` symbol, which *could* clash with an existing symbol and cause
 //! UB. For example, `cov_mark::hit!(main)` may segfault. That said:
 //!
@@ -89,6 +92,9 @@
 //! It is believed that it is practically impossible to cause UB by accident
 //! when using this crate. For this reason, the `hit` macro hides unsafety
 //! inside.
+
+#![cfg_attr(nightly_docs, deny(broken_intra_doc_links))]
+#![cfg_attr(nightly_docs, feature(doc_cfg))]
 
 /// Hit a mark with a specified name.
 ///
@@ -110,10 +116,10 @@ macro_rules! hit {
         {
             extern "C" {
                 #[no_mangle]
-                static $ident: $crate::__rt::AtomicUsize;
+                static $ident: $crate::__rt::HitCounter;
             }
             unsafe {
-                $ident.fetch_add(1, $crate::__rt::Ordering::Relaxed);
+                $ident.hit();
             }
         }
     }};
@@ -140,27 +146,118 @@ macro_rules! hit {
 #[macro_export]
 macro_rules! check {
     ($ident:ident) => {
+        $crate::__cov_mark_private_create_mark! { static $ident }
+        let _guard = $crate::__rt::Guard::new(&$ident, None);
+    };
+}
+
+/// Checks that a specified mark was hit exactly the specified number of times.
+///
+/// # Example
+///
+/// ```
+/// struct CoveredDropper;
+/// impl Drop for CoveredDropper {
+///     fn drop(&mut self) {
+///         cov_mark::hit!(covered_dropper_drops);
+///     }
+/// }
+///
+/// #[test]
+/// fn drop_count_test() {
+///     cov_mark::check_count!(covered_dropper_drops, 2);
+///     let _covered_dropper1 = CoveredDropper;
+///     let _covered_dropper2 = CoveredDropper;
+/// }
+/// ```
+#[cfg(feature = "thread-local")]
+#[cfg_attr(nightly_docs, doc(cfg(feature = "thread-local")))]
+#[macro_export]
+macro_rules! check_count {
+    ($ident:ident, $count: literal) => {
+        $crate::__cov_mark_private_create_mark! { static $ident }
+        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "thread-local")]
+macro_rules! __cov_mark_private_create_mark {
+    (static $ident:ident) => {
+        mod $ident {
+            thread_local! {
+                #[allow(non_upper_case_globals)]
+                pub(super) static $ident: $crate::__rt::AtomicUsize =
+                    $crate::__rt::AtomicUsize::new(0);
+            }
+        }
         #[no_mangle]
-        static $ident: $crate::__rt::AtomicUsize = $crate::__rt::AtomicUsize::new(0);
-        let _guard = $crate::__rt::Guard::new(&$ident);
+        static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new($ident::$ident);
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "thread-local"))]
+macro_rules! __cov_mark_private_create_mark {
+    (static $ident:ident) => {
+        #[no_mangle]
+        static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new();
     };
 }
 
 #[doc(hidden)]
 pub mod __rt {
-    pub use std::sync::atomic::{AtomicUsize, Ordering};
+    pub use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+    #[cfg(feature = "thread-local")]
+    use std::thread::LocalKey;
+
+    #[cfg(not(feature = "thread-local"))]
+    pub struct HitCounter(AtomicUsize);
+    #[cfg(feature = "thread-local")]
+    pub struct HitCounter(LocalKey<AtomicUsize>);
+
+    #[cfg(not(feature = "thread-local"))]
+    impl HitCounter {
+        pub const fn new() -> Self {
+            Self(AtomicUsize::new(0))
+        }
+        pub fn hit(&'static self) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+        pub fn value(&'static self) -> usize {
+            self.0.load(Ordering::Relaxed)
+        }
+    }
+
+    #[cfg(feature = "thread-local")]
+    impl HitCounter {
+        pub const fn new(key: LocalKey<AtomicUsize>) -> Self {
+            Self(key)
+        }
+        pub fn hit(&'static self) {
+            self.0.with(|v| v.fetch_add(1, Ordering::Relaxed));
+        }
+        pub fn value(&'static self) -> usize {
+            self.0.with(|v| v.load(Ordering::Relaxed))
+        }
+    }
 
     pub struct Guard {
-        mark: &'static AtomicUsize,
+        mark: &'static HitCounter,
         value_on_entry: usize,
+        expected_hits: Option<usize>,
     }
 
     impl Guard {
-        pub fn new(mark: &'static AtomicUsize) -> Guard {
-            let value_on_entry = mark.load(Ordering::Relaxed);
+        pub fn new(mark: &'static HitCounter, expected_hits: Option<usize>) -> Guard {
+            let value_on_entry = mark.value();
             Guard {
                 mark,
                 value_on_entry,
+                expected_hits,
             }
         }
     }
@@ -170,8 +267,17 @@ pub mod __rt {
             if std::thread::panicking() {
                 return;
             }
-            let value_on_exit = self.mark.load(Ordering::Relaxed);
-            assert!(value_on_exit > self.value_on_entry, "mark was not hit")
+            let value_on_exit = self.mark.value();
+            let hit_count = value_on_exit.wrapping_sub(self.value_on_entry);
+            match self.expected_hits {
+                Some(hits) => assert!(
+                    hit_count == hits,
+                    "mark was hit {} times, expected {}",
+                    hit_count,
+                    hits
+                ),
+                None => assert!(hit_count > 0, "mark was not hit"),
+            }
         }
     }
 }
