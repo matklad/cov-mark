@@ -202,6 +202,7 @@ macro_rules! check_count {
 #[cfg(feature = "thread-local")]
 macro_rules! define {
     ($ident:ident) => {
+        #[cfg(test)]
         mod $ident {
             thread_local! {
                 #[allow(non_upper_case_globals)]
@@ -209,6 +210,7 @@ macro_rules! define {
                     $crate::__rt::AtomicUsize::new(0);
             }
         }
+        #[cfg(test)]
         #[no_mangle]
         static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new($ident::$ident);
     };
@@ -228,6 +230,7 @@ macro_rules! define {
 #[cfg(not(feature = "thread-local"))]
 macro_rules! define {
     ($ident:ident) => {
+        #[cfg(test)]
         #[no_mangle]
         static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new();
     };
