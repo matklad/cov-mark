@@ -188,7 +188,7 @@ macro_rules! check_count {
     };
 }
 
-/// Defines a mark to be used with [`hit!`] and [`chk!`].
+/// Defines a mark to be used with defined [`check!`].
 ///
 /// # Example
 ///
@@ -214,7 +214,7 @@ macro_rules! define {
     };
 }
 
-/// Defines a mark to be used with [`hit!`] and [`chk!`].
+/// Defines a mark to be used with defined [`check!`].
 ///
 /// # Example
 ///
