@@ -96,71 +96,6 @@
 #![cfg_attr(nightly_docs, deny(broken_intra_doc_links))]
 #![cfg_attr(nightly_docs, feature(doc_cfg))]
 
-/// Defines a mark to be used with [`hit!`] and [`chk!`].
-///
-/// # Example
-///
-/// ```
-/// #[cfg(test)]
-/// mod tests {
-///    cov_mark::def!(no_op);
-/// }
-/// ```
-#[macro_export]
-macro_rules! def {
-    ($ident:ident) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
-    };
-}
-
-/// Equivalent of [`check!`], but uses a symbol defined with [`def!`] instead
-/// of implicitly declaring one.
-///
-/// # Example
-///
-/// ```
-/// cov_mark::def!(event);
-/// #[test]
-/// fn test() {
-///     cov_mark::chk!(event);
-///     do_stuff();
-/// }
-/// # fn do_stuff() {
-/// #     cov_mark::hit!(event);
-/// # }
-/// ```
-#[macro_export]
-macro_rules! chk {
-    ($ident:ident) => {
-        let _guard = $crate::__rt::Guard::new(&$ident, None);
-    };
-}
-
-/// Equivalent of [`check_count!`], but uses a symbol defined with [`def!`] instead
-/// of implicitly declaring one.
-///
-/// # Example
-///
-/// ```
-/// cov_mark::def!(event);
-/// #[test]
-/// fn test() {
-///     cov_mark::chk_cnt!(event, 1);
-///     do_stuff();
-/// }
-/// # fn do_stuff() {
-/// #     cov_mark::hit!(event);
-/// # }
-/// ```
-#[cfg(feature = "thread-local")]
-#[cfg_attr(nightly_docs, doc(cfg(feature = "thread-local")))]
-#[macro_export]
-macro_rules! chk_cnt {
-    ($ident:ident, $count: literal) => {
-        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
-    };
-}
-
 /// Hit a mark with a specified name.
 ///
 /// # Example
@@ -190,7 +125,8 @@ macro_rules! hit {
     }};
 }
 
-/// Checks that a specified mark was hit.
+/// Checks that a specified mark was hit. If the `defined` version is used,
+/// the symbol has to be previously defined with [`define`].
 ///
 /// # Example
 ///
@@ -211,12 +147,16 @@ macro_rules! hit {
 #[macro_export]
 macro_rules! check {
     ($ident:ident) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
+        $crate::define!($ident);
+        let _guard = $crate::__rt::Guard::new(&$ident, None);
+    };
+    (defined $ident:ident) => {
         let _guard = $crate::__rt::Guard::new(&$ident, None);
     };
 }
 
 /// Checks that a specified mark was hit exactly the specified number of times.
+/// The `defined` version works similarly to [`check!`].
 ///
 /// # Example
 ///
@@ -239,17 +179,29 @@ macro_rules! check {
 #[cfg_attr(nightly_docs, doc(cfg(feature = "thread-local")))]
 #[macro_export]
 macro_rules! check_count {
-    ($ident:ident, $count: literal) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
+    ($ident:ident, $count:literal) => {
+        $crate::define!($ident);
+        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
+    };
+    (defined $ident:ident, $count:literal) => {
         let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
     };
 }
 
-#[doc(hidden)]
+/// Defines a mark to be used with [`hit!`] and [`chk!`].
+///
+/// # Example
+///
+/// ```
+/// #[cfg(test)]
+/// mod tests {
+///    cov_mark::define!(no_op);
+/// }
+/// ```
 #[macro_export]
 #[cfg(feature = "thread-local")]
-macro_rules! __cov_mark_private_create_mark {
-    (static $ident:ident) => {
+macro_rules! define {
+    ($ident:ident) => {
         mod $ident {
             thread_local! {
                 #[allow(non_upper_case_globals)]
@@ -262,11 +214,20 @@ macro_rules! __cov_mark_private_create_mark {
     };
 }
 
-#[doc(hidden)]
+/// Defines a mark to be used with [`hit!`] and [`chk!`].
+///
+/// # Example
+///
+/// ```
+/// #[cfg(test)]
+/// mod tests {
+///    cov_mark::define!(no_op);
+/// }
+/// ```
 #[macro_export]
 #[cfg(not(feature = "thread-local"))]
-macro_rules! __cov_mark_private_create_mark {
-    (static $ident:ident) => {
+macro_rules! define {
+    ($ident:ident) => {
         #[no_mangle]
         static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new();
     };
