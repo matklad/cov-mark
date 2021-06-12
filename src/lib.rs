@@ -111,11 +111,9 @@
 /// ```
 #[macro_export]
 macro_rules! hit {
-    ($ident:ident) => {{
-        if $crate::__rt::enabled() {
-            $crate::__rt::hit(stringify!($ident));
-        }
-    }};
+    ($ident:ident) => {
+        $crate::__rt::hit(stringify!($ident))
+    };
 }
 
 /// Checks that a specified mark was hit.
@@ -170,6 +168,7 @@ macro_rules! check_count {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "enable")]
 pub mod __rt {
     use std::{
         cell::{Cell, RefCell},
@@ -181,14 +180,16 @@ pub mod __rt {
         static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
     }
 
-    #[inline]
-    pub fn enabled() -> bool {
-        LEVEL.with(|it| it.get() > 0)
-    }
-
-    #[cold]
+    #[inline(always)]
     pub fn hit(key: &'static str) {
-        ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+        if LEVEL.with(|it| it.get() > 0) {
+            hit_cold(key);
+        }
+
+        #[cold]
+        fn hit_cold(key: &'static str) -> () {
+            ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+        }
     }
 
     struct GuardInner {
@@ -244,6 +245,22 @@ pub mod __rt {
                 ),
                 None => assert!(hit_count > 0, "mark was not hit"),
             }
+        }
+    }
+}
+
+#[doc(hidden)]
+#[cfg(not(feature = "enable"))]
+pub mod __rt {
+    #[inline(always)]
+    pub fn hit(_: &'static str) {}
+
+    #[non_exhaustive]
+    pub struct Guard;
+
+    impl Guard {
+        pub fn new(_: &'static str, _: Option<usize>) -> Guard {
+            Guard
         }
     }
 }
