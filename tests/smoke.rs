@@ -20,7 +20,6 @@ impl Drop for CoveredDropper {
 }
 
 #[test]
-#[cfg(feature="thread-local")]
 fn test_drop_count() {
     cov_mark::check_count!(covered_dropper_drops, 2);
     let _covered_dropper1 = CoveredDropper;

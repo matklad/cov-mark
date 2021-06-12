@@ -112,15 +112,8 @@
 #[macro_export]
 macro_rules! hit {
     ($ident:ident) => {{
-        #[cfg(test)]
-        {
-            extern "C" {
-                #[no_mangle]
-                static $ident: $crate::__rt::HitCounter;
-            }
-            unsafe {
-                $ident.hit();
-            }
+        if $crate::__rt::enabled() {
+            $crate::__rt::hit(stringify!($ident));
         }
     }};
 }
@@ -146,8 +139,7 @@ macro_rules! hit {
 #[macro_export]
 macro_rules! check {
     ($ident:ident) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
-        let _guard = $crate::__rt::Guard::new(&$ident, None);
+        let _guard = $crate::__rt::Guard::new(stringify!($ident), None);
     };
 }
 
@@ -170,106 +162,80 @@ macro_rules! check {
 ///     let _covered_dropper2 = CoveredDropper;
 /// }
 /// ```
-#[cfg(feature = "thread-local")]
-#[cfg_attr(nightly_docs, doc(cfg(feature = "thread-local")))]
 #[macro_export]
 macro_rules! check_count {
     ($ident:ident, $count: literal) => {
-        $crate::__cov_mark_private_create_mark! { static $ident }
-        let _guard = $crate::__rt::Guard::new(&$ident, Some($count));
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-#[cfg(feature = "thread-local")]
-macro_rules! __cov_mark_private_create_mark {
-    (static $ident:ident) => {
-        mod $ident {
-            thread_local! {
-                #[allow(non_upper_case_globals)]
-                pub(super) static $ident: $crate::__rt::AtomicUsize =
-                    $crate::__rt::AtomicUsize::new(0);
-            }
-        }
-        #[no_mangle]
-        static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new($ident::$ident);
-    };
-}
-
-#[doc(hidden)]
-#[macro_export]
-#[cfg(not(feature = "thread-local"))]
-macro_rules! __cov_mark_private_create_mark {
-    (static $ident:ident) => {
-        #[no_mangle]
-        static $ident: $crate::__rt::HitCounter = $crate::__rt::HitCounter::new();
+        let _guard = $crate::__rt::Guard::new(stringify!($ident), Some($count));
     };
 }
 
 #[doc(hidden)]
 pub mod __rt {
-    pub use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
-    #[cfg(feature = "thread-local")]
-    use std::thread::LocalKey;
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
-    #[cfg(not(feature = "thread-local"))]
-    pub struct HitCounter(AtomicUsize);
-    #[cfg(feature = "thread-local")]
-    pub struct HitCounter(LocalKey<AtomicUsize>);
-
-    #[cfg(not(feature = "thread-local"))]
-    impl HitCounter {
-        pub const fn new() -> Self {
-            Self(AtomicUsize::new(0))
-        }
-        pub fn hit(&'static self) {
-            self.0.fetch_add(1, Ordering::Relaxed);
-        }
-        pub fn value(&'static self) -> usize {
-            self.0.load(Ordering::Relaxed)
-        }
+    thread_local! {
+        static LEVEL: Cell<u32> = Cell::new(0);
+        static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
     }
 
-    #[cfg(feature = "thread-local")]
-    impl HitCounter {
-        pub const fn new(key: LocalKey<AtomicUsize>) -> Self {
-            Self(key)
-        }
-        pub fn hit(&'static self) {
-            self.0.with(|v| v.fetch_add(1, Ordering::Relaxed));
-        }
-        pub fn value(&'static self) -> usize {
-            self.0.with(|v| v.load(Ordering::Relaxed))
-        }
+    #[inline]
+    pub fn enabled() -> bool {
+        LEVEL.with(|it| it.get() > 0)
     }
 
-    pub struct Guard {
-        mark: &'static HitCounter,
-        value_on_entry: usize,
+    #[cold]
+    pub fn hit(key: &'static str) {
+        ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+    }
+
+    struct GuardInner {
+        mark: &'static str,
+        hits: Cell<usize>,
         expected_hits: Option<usize>,
     }
 
-    impl Guard {
-        pub fn new(mark: &'static HitCounter, expected_hits: Option<usize>) -> Guard {
-            let value_on_entry = mark.value();
-            Guard {
-                mark,
-                value_on_entry,
-                expected_hits,
+    pub struct Guard {
+        inner: Rc<GuardInner>,
+    }
+
+    impl GuardInner {
+        fn hit(&self, key: &'static str) {
+            if key == self.mark {
+                self.hits.set(self.hits.get().saturating_add(1))
             }
+        }
+    }
+
+    impl Guard {
+        pub fn new(mark: &'static str, expected_hits: Option<usize>) -> Guard {
+            let inner = GuardInner {
+                mark,
+                hits: Cell::new(0),
+                expected_hits,
+            };
+            let inner = Rc::new(inner);
+            LEVEL.with(|it| it.set(it.get() + 1));
+            ACTIVE.with(|it| it.borrow_mut().push(Rc::clone(&inner)));
+            Guard { inner }
         }
     }
 
     impl Drop for Guard {
         fn drop(&mut self) {
+            LEVEL.with(|it| it.set(it.get() - 1));
+            let last = ACTIVE.with(|it| it.borrow_mut().pop());
+
             if std::thread::panicking() {
                 return;
             }
-            let value_on_exit = self.mark.value();
-            let hit_count = value_on_exit.wrapping_sub(self.value_on_entry);
-            match self.expected_hits {
+
+            let last = last.unwrap();
+            assert!(Rc::ptr_eq(&last, &self.inner));
+            let hit_count = last.hits.get();
+            match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
                     "mark was hit {} times, expected {}",
