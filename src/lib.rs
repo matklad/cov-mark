@@ -173,16 +173,22 @@ pub mod __rt {
     use std::{
         cell::{Cell, RefCell},
         rc::Rc,
+        sync::atomic::{AtomicUsize, Ordering::Relaxed},
     };
 
+    /// Even with
+    /// https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8,
+    /// a `thread_local` generates significantly more verbose assembly on x86
+    /// than atomic, so we'll use atomic for the fast path
+    static LEVEL: AtomicUsize = AtomicUsize::new(0);
+
     thread_local! {
-        static LEVEL: Cell<u32> = Cell::new(0);
         static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
     }
 
     #[inline(always)]
     pub fn hit(key: &'static str) {
-        if LEVEL.with(|it| it.get() > 0) {
+        if LEVEL.load(Relaxed) > 0 {
             hit_cold(key);
         }
 
@@ -218,7 +224,7 @@ pub mod __rt {
                 expected_hits,
             };
             let inner = Rc::new(inner);
-            LEVEL.with(|it| it.set(it.get() + 1));
+            LEVEL.fetch_add(1, Relaxed);
             ACTIVE.with(|it| it.borrow_mut().push(Rc::clone(&inner)));
             Guard { inner }
         }
@@ -226,7 +232,7 @@ pub mod __rt {
 
     impl Drop for Guard {
         fn drop(&mut self) {
-            LEVEL.with(|it| it.set(it.get() - 1));
+            LEVEL.fetch_sub(1, Relaxed);
             let last = ACTIVE.with(|it| it.borrow_mut().pop());
 
             if std::thread::panicking() {
