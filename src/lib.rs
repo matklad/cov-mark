@@ -170,7 +170,7 @@ pub mod __rt {
         }
 
         #[cold]
-        fn hit_cold(key: &'static str) -> () {
+        fn hit_cold(key: &'static str) {
             ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
         }
     }
