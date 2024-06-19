@@ -35,9 +35,9 @@
 //!
 //! //  This will fail. Although the test looks like
 //! //  it exercises the second condition, it does not.
-//! //  The call to `covers!` call catches this bug in the test.
+//! //  The call to `check!` call catches this bug in the test.
 //! //  {
-//! //      cov_mark::check!(bad_dashes);;
+//! //      cov_mark::check!(bad_dashes);
 //! //      assert!(parse_date("27.2.2013").is_none());
 //! //  }
 //!
@@ -60,38 +60,15 @@
 //!
 //! # Limitations
 //!
-//! * In the presence of threads, [`check!`] may falsely pass, if the
-//!   mark is hit by an unrelated thread, unless the `thread-local` feature is
-//!   enabled.
 //! * Names of marks must be globally unique.
-//! * [`check!`] can't be used in integration tests.
 //!
 //! # Implementation Details
 //!
 //! Each coverage mark is an `AtomicUsize` counter. [`hit!`] increments
 //! this counter, [`check!`] returns a guard object which checks that
-//! the mark was incremented. When the `thread-local` feature is enabled,
-//! each counter is stored as a thread-local, allowing for more accurate
+//! the mark was incremented.
+//! Each counter is stored as a thread-local, allowing for accurate per-thread
 //! counting.
-//!
-//! Counters are declared using `#[no_mangle]` attribute, so that [`hit!`] and
-//! [`check!`] both can find the mark without the need to declare it in a common
-//! module. Aren't the linkers ~~horrible~~ wonderful?
-//!
-//! # Safety
-//!
-//! Technically, the [`hit!`] macro in this crate is unsound: it uses `extern "C"
-//! #[no_mangle]` symbol, which *could* clash with an existing symbol and cause
-//! UB. For example, `cov_mark::hit!(main)` may segfault. That said:
-//!
-//! * If there's no existing symbol, the result is a linker error.
-//! * If there exists corresponding `cov_mark::check!`, the result is a linker
-//!   error.
-//! * Code inside `cov_mark::hit!` is hidden under `#[cfg(test)]`.
-//!
-//! It is believed that it is practically impossible to cause UB by accident
-//! when using this crate. For this reason, the `hit` macro hides unsafety
-//! inside.
 
 #![cfg_attr(nightly_docs, deny(broken_intra_doc_links))]
 #![cfg_attr(nightly_docs, feature(doc_cfg))]
