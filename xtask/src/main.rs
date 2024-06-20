@@ -1,60 +1,72 @@
-use std::env;
+#[cfg(test)]
+mod tidy;
 
-use xaction::{cargo_toml, cmd, git, section, Result};
+use std::time::Instant;
 
-fn main() {
-    if let Err(err) = try_main() {
-        eprintln!("error: {}", err);
-        std::process::exit(1)
-    }
-}
+use xshell::{cmd, Shell};
 
-fn try_main() -> Result<()> {
-    let subcommand = std::env::args().nth(1);
-    match subcommand {
-        Some(it) if it == "ci" => (),
-        _ => {
-            print_usage();
-            Err("invalid arguments")?
-        }
-    }
+fn main() -> xshell::Result<()> {
+    let sh = Shell::new()?;
 
-    let cargo_toml = cargo_toml()?;
+    cmd!(sh, "rustup toolchain install stable --no-self-update").run()?;
+    let _e = sh.push_env("RUSTUP_TOOLCHAIN", "stable");
+    cmd!(sh, "rustc --version").run()?;
 
     {
         let _s = section("BUILD");
-        cmd!("cargo test --workspace --no-run").run()?;
+        cmd!(sh, "cargo test --workspace --no-run").run()?;
     }
 
     {
         let _s = section("TEST");
-        cmd!("cargo test --workspace -- --nocapture").run()?;
-        cmd!("cargo test --workspace --no-default-features -- --nocapture").run()?;
+        cmd!(sh, "cargo test --workspace -- --nocapture").run()?;
     }
-
-    let version = cargo_toml.version()?;
-    let tag = format!("v{}", version);
-
-    let dry_run =
-        env::var("CI").is_err() || git::has_tag(&tag)? || git::current_branch()? != "master";
-    xaction::set_dry_run(dry_run);
 
     {
         let _s = section("PUBLISH");
-        cargo_toml.publish()?;
-        git::tag(&tag)?;
-        git::push_tags()?;
+
+        let version = cmd!(sh, "cargo pkgid -p cov-mark")
+            .read()?
+            .rsplit_once('#')
+            .unwrap()
+            .1
+            .to_string();
+        let tag = format!("v{version}");
+
+        let current_branch = cmd!(sh, "git branch --show-current").read()?;
+        let tag_exists = cmd!(sh, "git tag --list")
+            .read()?
+            .split_ascii_whitespace()
+            .any(|it| it == &tag);
+
+        if current_branch == "master" && !tag_exists {
+            cmd!(sh, "git tag v{version}").run()?;
+            cmd!(sh, "cargo publish -p cov-mark").run()?;
+            cmd!(sh, "git push --tags").run()?;
+        }
     }
+
     Ok(())
 }
 
-fn print_usage() {
-    eprintln!(
-        "\
-Usage: cargo run -p xtask <SUBCOMMAND>
+fn section(name: &'static str) -> impl Drop {
+    println!("::group::{name}");
+    let start = Instant::now();
+    defer(move || {
+        let elapsed = start.elapsed();
+        eprintln!("{name}: {elapsed:.2?}");
+        println!("::endgroup::");
+    })
+}
 
-SUBCOMMANDS:
-    ci
-"
-    )
+fn defer<F: FnOnce()>(f: F) -> impl Drop {
+    struct D<F: FnOnce()>(Option<F>);
+    impl<F: FnOnce()> Drop for D<F> {
+        fn drop(&mut self) {
+            if let Some(f) = self.0.take() {
+                f()
+            }
+        }
+    }
+    D(Some(f))
 }
