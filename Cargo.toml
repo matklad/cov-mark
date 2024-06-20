@@ -12,6 +12,7 @@ authors = [
     "Simonas Kazlauskas <cov-mark@kazlauskas.me>"
 ]
 edition = "2021"
+rust-version = "1.63"
 
 exclude = [".github/", "bors.toml", "rustfmt.toml"]
 
