@@ -11,7 +11,7 @@ authors = [
     "Aleksey Kladov <aleksey.kladov@gmail.com>",
     "Simonas Kazlauskas <cov-mark@kazlauskas.me>"
 ]
-edition = "2018"
+edition = "2021"
 
 exclude = [".github/", "bors.toml", "rustfmt.toml"]
 
