@@ -222,11 +222,12 @@ pub mod __rt {
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
-                    "mark was hit {} times, expected {}",
+                    "{} mark was hit {} times, expected {}",
+                    self.inner.mark,
                     hit_count,
                     hits
                 ),
-                None => assert!(hit_count > 0, "mark was not hit"),
+                None => assert!(hit_count > 0, "{} mark was not hit", self.inner.mark),
             }
         }
     }
