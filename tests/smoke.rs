@@ -25,3 +25,11 @@ fn test_drop_count() {
     let _covered_dropper1 = CoveredDropper;
     let _covered_dropper2 = CoveredDropper;
 }
+
+#[test]
+#[should_panic]
+fn test_drop_count_fail() {
+    cov_mark::check_count!(covered_dropper_drops, 1);
+    let _covered_dropper1 = CoveredDropper;
+    let _covered_dropper2 = CoveredDropper;
+}
