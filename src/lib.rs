@@ -70,8 +70,8 @@
 //! Each counter is stored as a thread-local, allowing for accurate per-thread
 //! counting.
 
-#![cfg_attr(nightly_docs, deny(broken_intra_doc_links))]
-#![cfg_attr(nightly_docs, feature(doc_cfg))]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![allow(clippy::test_attr_in_doctest)]
 
 /// Hit a mark with a specified name.
 ///
@@ -222,11 +222,12 @@ pub mod __rt {
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
-                    "mark was hit {} times, expected {}",
+                    "{} mark was hit {} times, expected {}",
+                    self.inner.mark,
                     hit_count,
                     hits
                 ),
-                None => assert!(hit_count > 0, "mark was not hit"),
+                None => assert!(hit_count > 0, "{} mark was not hit", self.inner.mark),
             }
         }
     }
