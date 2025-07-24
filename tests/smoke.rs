@@ -34,7 +34,6 @@ fn test_mark_survey() {
     let _covered_dropper2 = CoveredDropper;
 }
 
-
 #[test]
 #[should_panic(expected = "mark covered_dropper_drops was hit 2 times, expected 1")]
 fn test_drop_count_fail() {
