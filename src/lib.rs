@@ -276,6 +276,7 @@ pub mod __rt {
     pub struct SurveyGuard;
 
     impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
         pub fn new() -> SurveyGuard {
             SURVEY.store(true, Relaxed);
             SurveyGuard
