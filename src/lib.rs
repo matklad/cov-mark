@@ -149,7 +149,6 @@ macro_rules! check_count {
 pub mod __rt {
     use std::{
         cell::{Cell, RefCell},
-        rc::Rc,
         sync::atomic::{AtomicUsize, Ordering::Relaxed},
     };
 
@@ -160,7 +159,7 @@ pub mod __rt {
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
 
     thread_local! {
-        static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
+        static ACTIVE: RefCell<Vec<GuardInner>> = Default::default();
     }
 
     #[inline(always)]
@@ -182,7 +181,7 @@ pub mod __rt {
     }
 
     pub struct Guard {
-        inner: Rc<GuardInner>,
+        mark: &'static str,
     }
 
     impl GuardInner {
@@ -200,10 +199,9 @@ pub mod __rt {
                 hits: Cell::new(0),
                 expected_hits,
             };
-            let inner = Rc::new(inner);
             LEVEL.fetch_add(1, Relaxed);
-            ACTIVE.with(|it| it.borrow_mut().push(Rc::clone(&inner)));
-            Guard { inner }
+            ACTIVE.with(|it| it.borrow_mut().push(inner));
+            Guard { mark }
         }
     }
 
@@ -217,17 +215,17 @@ pub mod __rt {
             }
 
             let last = last.unwrap();
-            assert!(Rc::ptr_eq(&last, &self.inner));
+            assert_eq!(last.mark, self.mark);
             let hit_count = last.hits.get();
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
                     "mark {} was hit {} times, expected {}",
-                    self.inner.mark,
+                    self.mark,
                     hit_count,
                     hits
                 ),
-                None => assert!(hit_count > 0, "mark {} was not hit", self.inner.mark),
+                None => assert!(hit_count > 0, "mark {} was not hit", self.mark),
             }
         }
     }
