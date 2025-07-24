@@ -69,6 +69,10 @@
 //! the mark was incremented.
 //! Each counter is stored as a thread-local, allowing for accurate per-thread
 //! counting.
+//!
+//! # Porting existing tests to cov-mark
+//!
+//! When incrementally outfitting a set of tests with markers, [`survey!`] may be useful.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(clippy::test_attr_in_doctest)]
