@@ -154,7 +154,7 @@ pub mod __rt {
     };
 
     /// Even with
-    /// https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8,
+    /// <https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8>,
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
