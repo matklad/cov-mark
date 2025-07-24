@@ -69,6 +69,10 @@
 //! the mark was incremented.
 //! Each counter is stored as a thread-local, allowing for accurate per-thread
 //! counting.
+//!
+//! # Porting existing tests to cov-mark
+//!
+//! When incrementally outfitting a set of tests with markers, [`survey!`] may be useful.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(clippy::test_attr_in_doctest)]
@@ -80,7 +84,7 @@
 /// ```
 /// fn safe_divide(dividend: u32, divisor: u32) -> u32 {
 ///     if divisor == 0 {
-///         cov_mark::hit!(save_divide_zero);
+///         cov_mark::hit!(safe_divide_zero);
 ///         return 0;
 ///     }
 ///     dividend / divisor
@@ -100,12 +104,12 @@ macro_rules! hit {
 /// ```
 /// #[test]
 /// fn test_safe_divide_by_zero() {
-///     cov_mark::check!(save_divide_zero);
+///     cov_mark::check!(safe_divide_zero);
 ///     assert_eq!(safe_divide(92, 0), 0);
 /// }
 /// # fn safe_divide(dividend: u32, divisor: u32) -> u32 {
 /// #     if divisor == 0 {
-/// #         cov_mark::hit!(save_divide_zero);
+/// #         cov_mark::hit!(safe_divide_zero);
 /// #         return 0;
 /// #     }
 /// #     dividend / divisor
@@ -144,51 +148,110 @@ macro_rules! check_count {
     };
 }
 
+/// Survey which marks are hit.
+///
+/// # Example
+///
+/// ```
+/// struct CoveredDropper;
+/// impl Drop for CoveredDropper {
+///     fn drop(&mut self) {
+///         cov_mark::hit!(covered_dropper_drops);
+///     }
+/// }
+///
+/// # fn safe_divide(dividend: u32, divisor: u32) -> u32 {
+/// #     if divisor == 0 {
+/// #         cov_mark::hit!(safe_divide_zero);
+/// #         return 0;
+/// #     }
+/// #     dividend / divisor
+/// # }
+///
+/// #[test]
+/// fn drop_count_test() {
+///     cov_mark::survey!();
+///     let _covered_dropper1 = CoveredDropper;
+///     let _covered_dropper2 = CoveredDropper;
+///     safe_divide(92, 0);
+///     // prints
+///     // "mark safe_divide_zero ... hit 1 times"
+///     // "mark covered_dropper_drops ... hit 2 times"
+/// }
+/// ```
+#[macro_export]
+macro_rules! survey {
+    () => {
+        let _guard = $crate::__rt::SurveyGuard::new();
+    };
+}
+
 #[doc(hidden)]
 #[cfg(feature = "enable")]
 pub mod __rt {
     use std::{
-        cell::{Cell, RefCell},
-        rc::Rc,
-        sync::atomic::{AtomicUsize, Ordering::Relaxed},
+        cell::RefCell,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
     };
 
     /// Even with
-    /// https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8,
+    /// <https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8>,
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
+    static SURVEY: AtomicBool = AtomicBool::new(false);
 
     thread_local! {
-        static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
+        static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
+        static SURVEY_RESPONSE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
     }
 
     #[inline(always)]
     pub fn hit(key: &'static str) {
+        if SURVEY.load(Relaxed) {
+            add_to_survey(key);
+        }
+
         if LEVEL.load(Relaxed) > 0 {
             hit_cold(key);
         }
 
         #[cold]
         fn hit_cold(key: &'static str) {
-            ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+            ACTIVE.with(|it| it.borrow_mut().iter_mut().for_each(|g| g.hit(key)))
+        }
+
+        #[cold]
+        fn add_to_survey(mark: &'static str) {
+            let inner = GuardInner {
+                mark,
+                hits: 0,
+                expected_hits: None,
+            };
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                if it.iter().all(|g| g.mark != mark) {
+                    it.push(inner);
+                }
+                it.iter_mut().for_each(|g| g.hit(mark));
+            });
         }
     }
 
     struct GuardInner {
         mark: &'static str,
-        hits: Cell<usize>,
+        hits: usize,
         expected_hits: Option<usize>,
     }
 
     pub struct Guard {
-        inner: Rc<GuardInner>,
+        mark: &'static str,
     }
 
     impl GuardInner {
-        fn hit(&self, key: &'static str) {
+        fn hit(&mut self, key: &'static str) {
             if key == self.mark {
-                self.hits.set(self.hits.get().saturating_add(1))
+                self.hits = self.hits.saturating_add(1);
             }
         }
     }
@@ -197,13 +260,12 @@ pub mod __rt {
         pub fn new(mark: &'static str, expected_hits: Option<usize>) -> Guard {
             let inner = GuardInner {
                 mark,
-                hits: Cell::new(0),
+                hits: 0,
                 expected_hits,
             };
-            let inner = Rc::new(inner);
             LEVEL.fetch_add(1, Relaxed);
-            ACTIVE.with(|it| it.borrow_mut().push(Rc::clone(&inner)));
-            Guard { inner }
+            ACTIVE.with(|it| it.borrow_mut().push(inner));
+            Guard { mark }
         }
     }
 
@@ -217,18 +279,45 @@ pub mod __rt {
             }
 
             let last = last.unwrap();
-            assert!(Rc::ptr_eq(&last, &self.inner));
-            let hit_count = last.hits.get();
+            let hit_count = last.hits;
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
-                    "{} mark was hit {} times, expected {}",
-                    self.inner.mark,
+                    "mark {} was hit {} times, expected {}",
+                    self.mark,
                     hit_count,
                     hits
                 ),
-                None => assert!(hit_count > 0, "{} mark was not hit", self.inner.mark),
+                None => assert!(hit_count > 0, "mark {} was not hit", self.mark),
             }
+        }
+    }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> SurveyGuard {
+            SURVEY.store(true, Relaxed);
+            SurveyGuard
+        }
+    }
+
+    impl Drop for SurveyGuard {
+        fn drop(&mut self) {
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                for g in it.iter_mut() {
+                    let hit_count = g.hits;
+                    if hit_count == 1 {
+                        eprintln!("mark {} ... hit once", g.mark);
+                    } else if 1 < hit_count {
+                        eprintln!("mark {} ... hit {} times", g.mark, hit_count);
+                    }
+                }
+                it.clear();
+            });
+            SURVEY.store(false, Relaxed);
         }
     }
 }
@@ -245,6 +334,15 @@ pub mod __rt {
     impl Guard {
         pub fn new(_: &'static str, _: Option<usize>) -> Guard {
             Guard
+        }
+    }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> SurveyGuard {
+            SurveyGuard
         }
     }
 }

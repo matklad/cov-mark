@@ -1,6 +1,6 @@
 fn safe_divide(dividend: u32, divisor: u32) -> u32 {
     if divisor == 0 {
-        cov_mark::hit!(save_divide_zero);
+        cov_mark::hit!(safe_divide_zero);
         return 0;
     }
     dividend / divisor
@@ -8,7 +8,7 @@ fn safe_divide(dividend: u32, divisor: u32) -> u32 {
 
 #[test]
 fn test_safe_divide_by_zero() {
-    cov_mark::check!(save_divide_zero);
+    cov_mark::check!(safe_divide_zero);
     assert_eq!(safe_divide(92, 0), 0);
 }
 
@@ -27,7 +27,15 @@ fn test_drop_count() {
 }
 
 #[test]
-#[should_panic(expected = "covered_dropper_drops mark was hit 2 times, expected 1")]
+fn test_mark_survey() {
+    cov_mark::survey!();
+    cov_mark::check_count!(covered_dropper_drops, 2);
+    let _covered_dropper1 = CoveredDropper;
+    let _covered_dropper2 = CoveredDropper;
+}
+
+#[test]
+#[should_panic(expected = "mark covered_dropper_drops was hit 2 times, expected 1")]
 fn test_drop_count_fail() {
     cov_mark::check_count!(covered_dropper_drops, 1);
     let _covered_dropper1 = CoveredDropper;
