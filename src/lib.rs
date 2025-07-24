@@ -148,7 +148,7 @@ macro_rules! check_count {
 #[cfg(feature = "enable")]
 pub mod __rt {
     use std::{
-        cell::{Cell, RefCell},
+        cell::RefCell,
         sync::atomic::{AtomicUsize, Ordering::Relaxed},
     };
 
@@ -170,13 +170,13 @@ pub mod __rt {
 
         #[cold]
         fn hit_cold(key: &'static str) {
-            ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+            ACTIVE.with(|it| it.borrow_mut().iter_mut().for_each(|g| g.hit(key)))
         }
     }
 
     struct GuardInner {
         mark: &'static str,
-        hits: Cell<usize>,
+        hits: usize,
         expected_hits: Option<usize>,
     }
 
@@ -185,9 +185,9 @@ pub mod __rt {
     }
 
     impl GuardInner {
-        fn hit(&self, key: &'static str) {
+        fn hit(&mut self, key: &'static str) {
             if key == self.mark {
-                self.hits.set(self.hits.get().saturating_add(1))
+                self.hits = self.hits.saturating_add(1);
             }
         }
     }
@@ -196,7 +196,7 @@ pub mod __rt {
         pub fn new(mark: &'static str, expected_hits: Option<usize>) -> Guard {
             let inner = GuardInner {
                 mark,
-                hits: Cell::new(0),
+                hits: 0,
                 expected_hits,
             };
             LEVEL.fetch_add(1, Relaxed);
@@ -216,7 +216,7 @@ pub mod __rt {
 
             let last = last.unwrap();
             assert_eq!(last.mark, self.mark);
-            let hit_count = last.hits.get();
+            let hit_count = last.hits;
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
