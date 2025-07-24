@@ -159,7 +159,7 @@ pub mod __rt {
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
 
     thread_local! {
-        static ACTIVE: RefCell<Vec<GuardInner>> = Default::default();
+        static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
     }
 
     #[inline(always)]
