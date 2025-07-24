@@ -320,7 +320,9 @@ pub mod __rt {
                 let mut it = it.borrow_mut();
                 for g in it.iter() {
                     let hit_count = g.hits;
-                    if hit_count > 0 {
+                    if hit_count == 1 {
+                        eprintln!("mark {} ... hit once", g.mark);
+                    } else if 1 < hit_count {
                         eprintln!("mark {} ... hit {} times", g.mark, hit_count);
                     }
                 }
