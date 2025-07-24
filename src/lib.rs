@@ -191,7 +191,6 @@ macro_rules! survey {
 pub mod __rt {
     use std::{
         cell::{Cell, RefCell},
-        rc::Rc,
         sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
     };
 
@@ -203,8 +202,8 @@ pub mod __rt {
     static SURVEY: AtomicBool = AtomicBool::new(false);
 
     thread_local! {
-        static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
-        static SURVEY_RESPONSE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
+        static ACTIVE: RefCell<Vec<GuardInner>> = Default::default();
+        static SURVEY_RESPONSE: RefCell<Vec<GuardInner>> = Default::default();
     }
 
     #[inline(always)]
@@ -232,7 +231,7 @@ pub mod __rt {
             SURVEY_RESPONSE.with(|it| {
                 let mut it = it.borrow_mut();
                 if it.iter().all(|g| g.mark != mark) {
-                    it.push(Rc::new(inner));
+                    it.push(inner);
                 }
                 it.iter().for_each(|g| g.hit(mark));
             });
@@ -246,7 +245,7 @@ pub mod __rt {
     }
 
     pub struct Guard {
-        inner: Rc<GuardInner>,
+        mark: &'static str,
     }
 
     impl GuardInner {
@@ -264,10 +263,9 @@ pub mod __rt {
                 hits: Cell::new(0),
                 expected_hits,
             };
-            let inner = Rc::new(inner);
             LEVEL.fetch_add(1, Relaxed);
-            ACTIVE.with(|it| it.borrow_mut().push(Rc::clone(&inner)));
-            Guard { inner }
+            ACTIVE.with(|it| it.borrow_mut().push(inner));
+            Guard { mark }
         }
     }
 
@@ -281,17 +279,16 @@ pub mod __rt {
             }
 
             let last = last.unwrap();
-            assert!(Rc::ptr_eq(&last, &self.inner));
             let hit_count = last.hits.get();
             match last.expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
                     "mark {} was hit {} times, expected {}",
-                    self.inner.mark,
+                    self.mark,
                     hit_count,
                     hits
                 ),
-                None => assert!(hit_count > 0, "mark {} was not hit", self.inner.mark),
+                None => assert!(hit_count > 0, "mark {} was not hit", self.mark),
             }
         }
     }
