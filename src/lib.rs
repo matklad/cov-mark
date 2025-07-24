@@ -347,4 +347,13 @@ pub mod __rt {
             Guard
         }
     }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> SurveyGuard {
+            SurveyGuard
+        }
+    }
 }
