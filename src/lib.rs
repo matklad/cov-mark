@@ -202,8 +202,8 @@ pub mod __rt {
     static SURVEY: AtomicBool = AtomicBool::new(false);
 
     thread_local! {
-        static ACTIVE: RefCell<Vec<GuardInner>> = Default::default();
-        static SURVEY_RESPONSE: RefCell<Vec<GuardInner>> = Default::default();
+        static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
+        static SURVEY_RESPONSE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
     }
 
     #[inline(always)]
