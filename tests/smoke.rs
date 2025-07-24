@@ -27,7 +27,7 @@ fn test_drop_count() {
 }
 
 #[test]
-#[should_panic(expected = "covered_dropper_drops mark was hit 2 times, expected 1")]
+#[should_panic(expected = "mark covered_dropper_drops was hit 2 times, expected 1")]
 fn test_drop_count_fail() {
     cov_mark::check_count!(covered_dropper_drops, 1);
     let _covered_dropper1 = CoveredDropper;
