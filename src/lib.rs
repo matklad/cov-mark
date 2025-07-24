@@ -144,6 +144,37 @@ macro_rules! check_count {
     };
 }
 
+/// Survey which marks are hit.
+///
+/// # Example
+///
+/// ```
+/// struct CoveredDropper;
+/// impl Drop for CoveredDropper {
+///     fn drop(&mut self) {
+///         cov_mark::hit!(covered_dropper_drops);
+///     }
+/// }
+///
+/// # fn safe_divide(dividend: u32, divisor: u32) -> u32 {
+/// #     if divisor == 0 {
+/// #         cov_mark::hit!(safe_divide_zero);
+/// #         return 0;
+/// #     }
+/// #     dividend / divisor
+/// # }
+///
+/// #[test]
+/// fn drop_count_test() {
+///     cov_mark::survey!();
+///     let _covered_dropper1 = CoveredDropper;
+///     let _covered_dropper2 = CoveredDropper;
+///     safe_divide(92, 0);
+///     // prints
+///     // "mark safe_divide_zero ... hit 1 times"
+///     // "mark covered_dropper_drops ... hit 2 times"
+/// }
+/// ```
 #[macro_export]
 macro_rules! survey {
     () => {
