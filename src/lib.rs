@@ -284,7 +284,16 @@ pub mod __rt {
 
     impl Drop for SurveyGuard {
         fn drop(&mut self) {
-            SURVEY_RESPONSE.with(|it| it.borrow_mut().clear());
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                for g in it.iter() {
+                    let hit_count = g.hits;
+                    if hit_count > 0 {
+                        eprintln!("mark {} ... hit {} times", g.mark, hit_count);
+                    }
+                }
+                it.clear();
+            });
             SURVEY.store(false, Relaxed);
         }
     }
