@@ -80,7 +80,7 @@
 /// ```
 /// fn safe_divide(dividend: u32, divisor: u32) -> u32 {
 ///     if divisor == 0 {
-///         cov_mark::hit!(save_divide_zero);
+///         cov_mark::hit!(safe_divide_zero);
 ///         return 0;
 ///     }
 ///     dividend / divisor
@@ -100,12 +100,12 @@ macro_rules! hit {
 /// ```
 /// #[test]
 /// fn test_safe_divide_by_zero() {
-///     cov_mark::check!(save_divide_zero);
+///     cov_mark::check!(safe_divide_zero);
 ///     assert_eq!(safe_divide(92, 0), 0);
 /// }
 /// # fn safe_divide(dividend: u32, divisor: u32) -> u32 {
 /// #     if divisor == 0 {
-/// #         cov_mark::hit!(save_divide_zero);
+/// #         cov_mark::hit!(safe_divide_zero);
 /// #         return 0;
 /// #     }
 /// #     dividend / divisor
