@@ -144,13 +144,20 @@ macro_rules! check_count {
     };
 }
 
+#[macro_export]
+macro_rules! survey {
+    () => {
+        let _guard = $crate::__rt::SurveyGuard::new();
+    };
+}
+
 #[doc(hidden)]
 #[cfg(feature = "enable")]
 pub mod __rt {
     use std::{
         cell::{Cell, RefCell},
         rc::Rc,
-        sync::atomic::{AtomicUsize, Ordering::Relaxed},
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
     };
 
     /// Even with
@@ -158,13 +165,19 @@ pub mod __rt {
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
+    static SURVEY: AtomicBool = AtomicBool::new(false);
 
     thread_local! {
         static ACTIVE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
+        static SURVEY_RESPONSE: RefCell<Vec<Rc<GuardInner>>> = Default::default();
     }
 
     #[inline(always)]
     pub fn hit(key: &'static str) {
+        if SURVEY.load(Relaxed) {
+            add_to_survey(key);
+        }
+
         if LEVEL.load(Relaxed) > 0 {
             hit_cold(key);
         }
@@ -172,6 +185,22 @@ pub mod __rt {
         #[cold]
         fn hit_cold(key: &'static str) {
             ACTIVE.with(|it| it.borrow().iter().for_each(|g| g.hit(key)))
+        }
+
+        #[cold]
+        fn add_to_survey(mark: &'static str) {
+            let inner = GuardInner {
+                mark,
+                hits: Cell::new(0),
+                expected_hits: None,
+            };
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                if it.iter().all(|g| g.mark != mark) {
+                    it.push(Rc::new(inner));
+                }
+                it.iter().for_each(|g| g.hit(mark));
+            });
         }
     }
 
@@ -229,6 +258,22 @@ pub mod __rt {
                 ),
                 None => assert!(hit_count > 0, "{} mark was not hit", self.inner.mark),
             }
+        }
+    }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        pub fn new() -> SurveyGuard {
+            SURVEY.store(true, Relaxed);
+            SurveyGuard
+        }
+    }
+
+    impl Drop for SurveyGuard {
+        fn drop(&mut self) {
+            SURVEY_RESPONSE.with(|it| it.borrow_mut().clear());
+            SURVEY.store(false, Relaxed);
         }
     }
 }

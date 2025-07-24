@@ -27,6 +27,14 @@ fn test_drop_count() {
 }
 
 #[test]
+fn test_mark_survey() {
+    cov_mark::survey!();
+    cov_mark::check_count!(covered_dropper_drops, 2);
+    let _covered_dropper1 = CoveredDropper;
+    let _covered_dropper2 = CoveredDropper;
+}
+
+#[test]
 #[should_panic(expected = "covered_dropper_drops mark was hit 2 times, expected 1")]
 fn test_drop_count_fail() {
     cov_mark::check_count!(covered_dropper_drops, 1);
