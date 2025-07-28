@@ -320,6 +320,10 @@ pub mod __rt {
 
     impl Drop for SurveyGuard {
         fn drop(&mut self) {
+            if std::thread::panicking() {
+                return;
+            }
+
             SURVEY_RESPONSE.with(|it| {
                 let mut it = it.borrow_mut();
                 for g in it.iter() {
