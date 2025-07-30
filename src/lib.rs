@@ -182,6 +182,7 @@ pub mod __rt {
 
     pub struct Guard {
         mark: &'static str,
+        f: fn(Option<usize>, usize, &'static str),
     }
 
     impl GuardInner {
@@ -199,9 +200,16 @@ pub mod __rt {
                 hits: 0,
                 expected_hits,
             };
+            let f = |expected_hits, hit_count, mark| match expected_hits {
+                Some(hits) => assert!(
+                    hit_count == hits,
+                    "mark {mark} was hit {hit_count} times, expected {hits}"
+                ),
+                None => assert!(hit_count > 0, "mark {mark} was not hit"),
+            };
             LEVEL.fetch_add(1, Relaxed);
             ACTIVE.with(|it| it.borrow_mut().push(inner));
-            Guard { mark }
+            Guard { mark, f }
         }
     }
 
@@ -217,16 +225,7 @@ pub mod __rt {
             let last = last.unwrap();
             assert_eq!(last.mark, self.mark);
             let hit_count = last.hits;
-            match last.expected_hits {
-                Some(hits) => assert!(
-                    hit_count == hits,
-                    "mark {} was hit {} times, expected {}",
-                    self.mark,
-                    hit_count,
-                    hits
-                ),
-                None => assert!(hit_count > 0, "mark {} was not hit", self.mark),
-            }
+            (self.f)(last.expected_hits, hit_count, self.mark)
         }
     }
 }
