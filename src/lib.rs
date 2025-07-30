@@ -114,7 +114,7 @@ macro_rules! hit {
 #[macro_export]
 macro_rules! check {
     ($ident:ident) => {
-        let _guard = $crate::__rt::Guard::new(stringify!($ident), None);
+        let _guard = $crate::__rt::Guard::new(stringify!($ident), None, $crate::assert!());
     };
 }
 
@@ -140,9 +140,26 @@ macro_rules! check {
 #[macro_export]
 macro_rules! check_count {
     ($ident:ident, $count: literal) => {
-        let _guard = $crate::__rt::Guard::new(stringify!($ident), Some($count));
+        let _guard = $crate::__rt::Guard::new(stringify!($ident), Some($count), $crate::assert!());
     };
 }
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! assert {
+    () => {
+        |expected_hits, hit_count, mark| match expected_hits {
+            Some(hits) => assert!(
+                hit_count == hits,
+                "mark {mark} was hit {hit_count} times, expected {hits}"
+            ),
+            None => assert!(hit_count > 0, "mark {mark} was not hit"),
+        }
+    };
+}
+
+#[doc(hidden)]
+pub type AssertCallback = fn(Option<usize>, usize, &'static str);
 
 #[doc(hidden)]
 #[cfg(feature = "enable")]
@@ -151,6 +168,8 @@ pub mod __rt {
         cell::RefCell,
         sync::atomic::{AtomicUsize, Ordering::Relaxed},
     };
+
+    use super::AssertCallback;
 
     /// Even with
     /// <https://github.com/rust-lang/rust/commit/641d3b09f41b441f2c2618de32983ad3d13ea3f8>,
@@ -182,7 +201,7 @@ pub mod __rt {
 
     pub struct Guard {
         mark: &'static str,
-        f: fn(Option<usize>, usize, &'static str),
+        f: AssertCallback,
     }
 
     impl GuardInner {
@@ -194,14 +213,7 @@ pub mod __rt {
     }
 
     impl Guard {
-        pub fn new(mark: &'static str, expected_hits: Option<usize>) -> Guard {
-            let f = |expected_hits, hit_count, mark| match expected_hits {
-                Some(hits) => assert!(
-                    hit_count == hits,
-                    "mark {mark} was hit {hit_count} times, expected {hits}"
-                ),
-                None => assert!(hit_count > 0, "mark {mark} was not hit"),
-            };
+        pub fn new(mark: &'static str, expected_hits: Option<usize>, f: AssertCallback) -> Guard {
             LEVEL.fetch_add(1, Relaxed);
             ACTIVE.with(|it| {
                 it.borrow_mut().push(GuardInner {
@@ -241,7 +253,7 @@ pub mod __rt {
     pub struct Guard;
 
     impl Guard {
-        pub fn new(_: &'static str, _: Option<usize>) -> Guard {
+        pub fn new(_: &'static str, _: Option<usize>, _: super::AssertCallback) -> Guard {
             Guard
         }
     }
