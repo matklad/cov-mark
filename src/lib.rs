@@ -195,11 +195,6 @@ pub mod __rt {
 
     impl Guard {
         pub fn new(mark: &'static str, expected_hits: Option<usize>) -> Guard {
-            let inner = GuardInner {
-                mark,
-                hits: 0,
-                expected_hits,
-            };
             let f = |expected_hits, hit_count, mark| match expected_hits {
                 Some(hits) => assert!(
                     hit_count == hits,
@@ -208,7 +203,13 @@ pub mod __rt {
                 None => assert!(hit_count > 0, "mark {mark} was not hit"),
             };
             LEVEL.fetch_add(1, Relaxed);
-            ACTIVE.with(|it| it.borrow_mut().push(inner));
+            ACTIVE.with(|it| {
+                it.borrow_mut().push(GuardInner {
+                    mark,
+                    hits: 0,
+                    expected_hits,
+                })
+            });
             Guard { mark, f }
         }
     }
