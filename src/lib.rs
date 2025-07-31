@@ -213,6 +213,8 @@ pub mod __rt {
     }
 
     impl Guard {
+        // macro expansion inserts a [`AssertCallback`] defined in user code, so the panic location
+        // points to user code instead of cov-mark internals
         pub fn new(mark: &'static str, expected_hits: Option<usize>, f: AssertCallback) -> Guard {
             LEVEL.fetch_add(1, Relaxed);
             ACTIVE.with(|it| {
