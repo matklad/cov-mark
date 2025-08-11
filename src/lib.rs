@@ -72,7 +72,7 @@
 //!
 //! # Porting existing tests to cov-mark
 //!
-//! When incrementally outfitting a set of tests with markers, [`survey!`] may be useful.
+//! When incrementally outfitting a set of tests with markers, [`survey`] may be useful.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(clippy::test_attr_in_doctest)]
@@ -170,7 +170,7 @@ macro_rules! check_count {
 ///
 /// #[test]
 /// fn drop_count_test() {
-///     cov_mark::survey!();
+///     let _survey = cov_mark::survey(); // sets a drop guard that tracks hits
 ///     let _covered_dropper1 = CoveredDropper;
 ///     let _covered_dropper2 = CoveredDropper;
 ///     safe_divide(92, 0);
@@ -179,11 +179,8 @@ macro_rules! check_count {
 ///     // "mark covered_dropper_drops ... hit 2 times"
 /// }
 /// ```
-#[macro_export]
-macro_rules! survey {
-    () => {
-        let _guard = $crate::__rt::SurveyGuard::new();
-    };
+pub fn survey() -> __rt::SurveyGuard {
+    __rt::SurveyGuard::new()
 }
 
 #[doc(hidden)]
