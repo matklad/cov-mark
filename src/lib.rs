@@ -205,7 +205,7 @@ pub type AssertCallback = fn(Option<usize>, usize, &'static str);
 pub mod __rt {
     use std::{
         cell::RefCell,
-        sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
+        sync::atomic::{AtomicUsize, Ordering::Relaxed},
     };
 
     use super::AssertCallback;
@@ -215,7 +215,7 @@ pub mod __rt {
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
-    static SURVEY: AtomicBool = AtomicBool::new(false);
+    const USIZE_MSB: usize = !(usize::MAX >> 1);
 
     thread_local! {
         static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
@@ -224,11 +224,11 @@ pub mod __rt {
 
     #[inline(always)]
     pub fn hit(key: &'static str) {
-        if SURVEY.load(Relaxed) {
-            add_to_survey(key);
-        }
-
-        if LEVEL.load(Relaxed) > 0 {
+        let level = LEVEL.load(Relaxed);
+        if level > 0 {
+            if level > USIZE_MSB {
+                add_to_survey(key);
+            }
             hit_cold(key);
         }
 
@@ -310,14 +310,14 @@ pub mod __rt {
     impl SurveyGuard {
         #[allow(clippy::new_without_default)]
         pub fn new() -> SurveyGuard {
-            SURVEY.store(true, Relaxed);
+            LEVEL.fetch_or(USIZE_MSB, Relaxed);
             SurveyGuard
         }
     }
 
     impl Drop for SurveyGuard {
         fn drop(&mut self) {
-            SURVEY.store(false, Relaxed);
+            LEVEL.fetch_and(!USIZE_MSB, Relaxed);
 
             if std::thread::panicking() {
                 return;
