@@ -239,17 +239,19 @@ pub mod __rt {
 
         #[cold]
         fn add_to_survey(mark: &'static str) {
-            let inner = GuardInner {
-                mark,
-                hits: 0,
-                expected_hits: None,
-            };
             SURVEY_RESPONSE.with(|it| {
                 let mut it = it.borrow_mut();
-                if it.iter().all(|g| g.mark != mark) {
-                    it.push(inner);
+                for survey in it.iter_mut() {
+                    if survey.mark == mark {
+                        survey.hits = survey.hits.saturating_add(1);
+                        return;
+                    }
                 }
-                it.iter_mut().for_each(|g| g.hit(mark));
+                it.push(GuardInner {
+                    mark,
+                    hits: 1,
+                    expected_hits: None,
+                });
             });
         }
     }
