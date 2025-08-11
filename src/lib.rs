@@ -317,6 +317,8 @@ pub mod __rt {
 
     impl Drop for SurveyGuard {
         fn drop(&mut self) {
+            SURVEY.store(false, Relaxed);
+
             if std::thread::panicking() {
                 return;
             }
@@ -333,7 +335,6 @@ pub mod __rt {
                 }
                 it.clear();
             });
-            SURVEY.store(false, Relaxed);
         }
     }
 }
