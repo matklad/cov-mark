@@ -69,6 +69,10 @@
 //! the mark was incremented.
 //! Each counter is stored as a thread-local, allowing for accurate per-thread
 //! counting.
+//!
+//! # Porting existing tests to cov-mark
+//!
+//! When incrementally outfitting a set of tests with markers, [`survey`] may be useful.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(clippy::test_attr_in_doctest)]
@@ -144,6 +148,41 @@ macro_rules! check_count {
     };
 }
 
+/// Survey which marks are hit.
+///
+/// # Example
+///
+/// ```
+/// struct CoveredDropper;
+/// impl Drop for CoveredDropper {
+///     fn drop(&mut self) {
+///         cov_mark::hit!(covered_dropper_drops);
+///     }
+/// }
+///
+/// # fn safe_divide(dividend: u32, divisor: u32) -> u32 {
+/// #     if divisor == 0 {
+/// #         cov_mark::hit!(safe_divide_zero);
+/// #         return 0;
+/// #     }
+/// #     dividend / divisor
+/// # }
+///
+/// #[test]
+/// fn drop_count_test() {
+///     let _survey = cov_mark::survey(); // sets a drop guard that tracks hits
+///     let _covered_dropper1 = CoveredDropper;
+///     let _covered_dropper2 = CoveredDropper;
+///     safe_divide(92, 0);
+///     // prints
+///     // "mark safe_divide_zero ... hit 1 times"
+///     // "mark covered_dropper_drops ... hit 2 times"
+/// }
+/// ```
+pub fn survey() -> __rt::SurveyGuard {
+    __rt::SurveyGuard::new()
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! assert {
@@ -176,20 +215,44 @@ pub mod __rt {
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
+    const USIZE_MSB: usize = !(usize::MAX >> 1);
 
     thread_local! {
         static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
+        static SURVEY_RESPONSE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
     }
 
     #[inline(always)]
     pub fn hit(key: &'static str) {
-        if LEVEL.load(Relaxed) > 0 {
+        let level = LEVEL.load(Relaxed);
+        if level > 0 {
+            if level > USIZE_MSB {
+                add_to_survey(key);
+            }
             hit_cold(key);
         }
 
         #[cold]
         fn hit_cold(key: &'static str) {
             ACTIVE.with(|it| it.borrow_mut().iter_mut().for_each(|g| g.hit(key)))
+        }
+
+        #[cold]
+        fn add_to_survey(mark: &'static str) {
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                for survey in it.iter_mut() {
+                    if survey.mark == mark {
+                        survey.hits = survey.hits.saturating_add(1);
+                        return;
+                    }
+                }
+                it.push(GuardInner {
+                    mark,
+                    hits: 1,
+                    expected_hits: None,
+                });
+            });
         }
     }
 
@@ -243,6 +306,39 @@ pub mod __rt {
             (self.f)(last.expected_hits, hit_count, self.mark)
         }
     }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> SurveyGuard {
+            LEVEL.fetch_or(USIZE_MSB, Relaxed);
+            SurveyGuard
+        }
+    }
+
+    impl Drop for SurveyGuard {
+        fn drop(&mut self) {
+            LEVEL.fetch_and(!USIZE_MSB, Relaxed);
+
+            if std::thread::panicking() {
+                return;
+            }
+
+            SURVEY_RESPONSE.with(|it| {
+                let mut it = it.borrow_mut();
+                for g in it.iter() {
+                    let hit_count = g.hits;
+                    if hit_count == 1 {
+                        eprintln!("mark {} ... hit once", g.mark);
+                    } else if 1 < hit_count {
+                        eprintln!("mark {} ... hit {} times", g.mark, hit_count);
+                    }
+                }
+                it.clear();
+            });
+        }
+    }
 }
 
 #[doc(hidden)]
@@ -257,6 +353,15 @@ pub mod __rt {
     impl Guard {
         pub fn new(_: &'static str, _: Option<usize>, _: super::AssertCallback) -> Guard {
             Guard
+        }
+    }
+
+    pub struct SurveyGuard;
+
+    impl SurveyGuard {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> SurveyGuard {
+            SurveyGuard
         }
     }
 }
