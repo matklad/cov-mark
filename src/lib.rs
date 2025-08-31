@@ -215,7 +215,7 @@ pub mod __rt {
     /// a `thread_local` generates significantly more verbose assembly on x86
     /// than atomic, so we'll use atomic for the fast path
     static LEVEL: AtomicUsize = AtomicUsize::new(0);
-    const USIZE_MSB: usize = !(usize::MAX >> 1);
+    const SURVEY_LEVEL: usize = !(usize::MAX >> 1);
 
     thread_local! {
         static ACTIVE: RefCell<Vec<GuardInner>> = const { RefCell::new(Vec::new()) };
@@ -226,7 +226,7 @@ pub mod __rt {
     pub fn hit(key: &'static str) {
         let level = LEVEL.load(Relaxed);
         if level > 0 {
-            if level > USIZE_MSB {
+            if level > SURVEY_LEVEL {
                 add_to_survey(key);
             }
             hit_cold(key);
@@ -312,14 +312,14 @@ pub mod __rt {
     impl SurveyGuard {
         #[allow(clippy::new_without_default)]
         pub fn new() -> SurveyGuard {
-            LEVEL.fetch_or(USIZE_MSB, Relaxed);
+            LEVEL.fetch_or(SURVEY_LEVEL, Relaxed);
             SurveyGuard
         }
     }
 
     impl Drop for SurveyGuard {
         fn drop(&mut self) {
-            LEVEL.fetch_and(!USIZE_MSB, Relaxed);
+            LEVEL.fetch_and(!SURVEY_LEVEL, Relaxed);
 
             if std::thread::panicking() {
                 return;
