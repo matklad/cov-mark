@@ -33,3 +33,11 @@ fn test_drop_count_fail() {
     let _covered_dropper1 = CoveredDropper;
     let _covered_dropper2 = CoveredDropper;
 }
+
+#[test]
+fn test_mark_survey() {
+    let _survey = cov_mark::survey();
+    cov_mark::check_count!(covered_dropper_drops, 2);
+    let _covered_dropper1 = CoveredDropper;
+    let _covered_dropper2 = CoveredDropper;
+}
