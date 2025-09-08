@@ -175,7 +175,7 @@ macro_rules! check_count {
 ///     let _covered_dropper2 = CoveredDropper;
 ///     safe_divide(92, 0);
 ///     // prints
-///     // "mark safe_divide_zero ... hit 1 times"
+///     // "mark safe_divide_zero ... hit once"
 ///     // "mark covered_dropper_drops ... hit 2 times"
 /// }
 /// ```
