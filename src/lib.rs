@@ -226,7 +226,7 @@ pub mod __rt {
     pub fn hit(key: &'static str) {
         let level = LEVEL.load(Relaxed);
         if level > 0 {
-            if level > SURVEY_LEVEL {
+            if level >= SURVEY_LEVEL {
                 add_to_survey(key);
             }
             hit_cold(key);
