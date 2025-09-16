@@ -256,6 +256,7 @@ pub mod __rt {
         }
     }
 
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
     struct GuardInner {
         mark: &'static str,
         hits: usize,
@@ -327,6 +328,7 @@ pub mod __rt {
 
             SURVEY_RESPONSE.with(|it| {
                 let mut it = it.borrow_mut();
+                it.sort();
                 for g in it.iter() {
                     let hit_count = g.hits;
                     if hit_count == 1 {
