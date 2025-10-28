@@ -175,7 +175,7 @@ macro_rules! check_count {
 ///     let _covered_dropper2 = CoveredDropper;
 ///     safe_divide(92, 0);
 ///     // prints
-///     // "mark safe_divide_zero ... hit 1 times"
+///     // "mark safe_divide_zero ... hit once"
 ///     // "mark covered_dropper_drops ... hit 2 times"
 /// }
 /// ```
@@ -226,7 +226,7 @@ pub mod __rt {
     pub fn hit(key: &'static str) {
         let level = LEVEL.load(Relaxed);
         if level > 0 {
-            if level > SURVEY_LEVEL {
+            if level >= SURVEY_LEVEL {
                 add_to_survey(key);
             }
             hit_cold(key);
@@ -256,6 +256,7 @@ pub mod __rt {
         }
     }
 
+    #[derive(PartialEq, Eq, PartialOrd, Ord)]
     struct GuardInner {
         mark: &'static str,
         hits: usize,
@@ -327,6 +328,7 @@ pub mod __rt {
 
             SURVEY_RESPONSE.with(|it| {
                 let mut it = it.borrow_mut();
+                it.sort();
                 for g in it.iter() {
                     let hit_count = g.hits;
                     if hit_count == 1 {
